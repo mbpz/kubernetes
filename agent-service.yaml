@@ -1,0 +1,25 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: agent-sandbox
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+        autoscaling.knative.dev/target: "1"
+        autoscaling.knative.dev/scaleDownDelay: "30s"  # M1 上可以把等缩时间改短，玩得更明显
+    spec:
+      containerConcurrency: 1
+      containers:
+      - image: ghcr.io/knative/helloworld-go:latest   # 官方测试镜像，支持 ARM
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "500m"
+            memory: "128Mi"

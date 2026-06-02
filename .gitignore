@@ -1,0 +1,6 @@
+.admin_token
+.env
+*.log
+/tmp/
+__pycache__/
+.DS_Store
