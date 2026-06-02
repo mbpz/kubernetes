@@ -69,7 +69,7 @@
 ```bash
 cd /Users/jinguo.zeng/dmall/project/kubernetes
 git init
-git config user.email "jinguo.zeng@local"
+git config user.email "jinguo.zeng@dmall.com"
 git config user.name "jinguo.zeng"
 ```
 
