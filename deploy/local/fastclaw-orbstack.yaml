@@ -1,22 +1,11 @@
 # FastClaw — orbstack k8s 本地单文件部署
-# 部署顺序: ns → secrets/config → postgres + minio → bucket-init Job → fastclaw
+# 部署顺序: ns → secrets (apply secrets.sh) → config → postgres + minio → bucket-init Job → fastclaw
+# Secret 由 deploy/local/secrets.sh 从 .env 单独创建, 不在此文件维护
 # 详见 docs/superpowers/specs/2026-06-02-fastclaw-local-repro-design.md §4
 
 apiVersion: v1
 kind: Namespace
 metadata: { name: fastclaw }
-
----
-apiVersion: v1
-kind: Secret
-metadata: { name: fastclaw-secrets, namespace: fastclaw }
-type: Opaque
-stringData:
-  STORAGE_DSN: "postgres://fastclaw:fastclaw@postgres:5432/fastclaw?sslmode=disable"
-  OBJECT_STORE_ACCESSKEY: "minioadmin"
-  OBJECT_STORE_SECRETKEY: "minioadmin"
-  E2B_API_KEY: "REPLACE_WITH_E2B_KEY"
-  OPENAI_API_KEY: "REPLACE_WITH_LLM_KEY"
 
 ---
 apiVersion: v1
