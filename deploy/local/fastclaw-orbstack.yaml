@@ -20,7 +20,9 @@ data:
   FASTCLAW_OBJECT_STORE_ENDPOINT: "minio:9000"
   FASTCLAW_OBJECT_STORE_BUCKET: "fastclaw"
   FASTCLAW_OBJECT_STORE_USESSL: "false"
-  FASTCLAW_SANDBOX_ENABLED: "true"
+  # Sandbox 默认关闭. 启用需在 .env 配 E2B_API_KEY 并重跑 secrets.sh, 再
+  # 把 FASTCLAW_SANDBOX_ENABLED 改 "true". 与上游 helm 默认对齐.
+  FASTCLAW_SANDBOX_ENABLED: "false"
   FASTCLAW_SANDBOX_BACKEND: "e2b"
   FASTCLAW_LOG_LEVEL: "info"
 
@@ -153,8 +155,10 @@ spec:
             - { name: FASTCLAW_STORAGE_DSN,            valueFrom: { secretKeyRef: { name: fastclaw-secrets, key: STORAGE_DSN } } }
             - { name: FASTCLAW_OBJECT_STORE_ACCESSKEY, valueFrom: { secretKeyRef: { name: fastclaw-secrets, key: OBJECT_STORE_ACCESSKEY } } }
             - { name: FASTCLAW_OBJECT_STORE_SECRETKEY, valueFrom: { secretKeyRef: { name: fastclaw-secrets, key: OBJECT_STORE_SECRETKEY } } }
-            - { name: E2B_API_KEY,                     valueFrom: { secretKeyRef: { name: fastclaw-secrets, key: E2B_API_KEY } } }
-            - { name: OPENAI_API_KEY,                  valueFrom: { secretKeyRef: { name: fastclaw-secrets, key: OPENAI_API_KEY } } }
+            # OPENAI_API_KEY / 其他 LLM provider key 不注入 pod. 由用户在
+            # `fastclaw agents init` 时从自己进程 env 传入, fastclaw 存进
+            # agents.api_key. E2B_API_KEY 仅在 sandbox 启用时由 secrets.sh
+            # 注入到同名 Secret 键.
           volumeMounts: [{ name: data, mountPath: /data/.fastclaw }]
           readinessProbe:
             httpGet: { path: /readyz, port: http }

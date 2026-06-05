@@ -15,8 +15,16 @@ ENV_FILE=".env"
 # shellcheck disable=SC1090
 set -a; . "./$ENV_FILE"; set +a
 
-: "${E2B_API_KEY:?FAIL: E2B_API_KEY 未设置}"
-: "${OPENAI_API_KEY:?FAIL: OPENAI_API_KEY 未设置}"
+# OPENAI_API_KEY 故意不放进 Secret. fastclaw agents init 会从调用进程的
+# env 读取 provider key 并存进 DB (agents.api_key), 每个用户/agent 独立.
+# E2B_API_KEY 是 cluster 级 sandbox 配置, 仅在 FASTCLAW_SANDBOX_ENABLED=true
+# 时需要, 因此只在 .env 设置了才注入 (默认 sandbox 关闭).
+
+E2B_ARGS=()
+if [ -n "${E2B_API_KEY:-}" ]; then
+  E2B_ARGS=(--from-literal=E2B_API_KEY="$E2B_API_KEY")
+  echo "注: 已注入 E2B_API_KEY (sandbox 启用时需要)"
+fi
 
 kubectl create namespace fastclaw --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
@@ -24,8 +32,7 @@ kubectl -n fastclaw create secret generic fastclaw-secrets \
   --from-literal=STORAGE_DSN="postgres://fastclaw:fastclaw@postgres:5432/fastclaw?sslmode=disable" \
   --from-literal=OBJECT_STORE_ACCESSKEY=minioadmin \
   --from-literal=OBJECT_STORE_SECRETKEY=minioadmin \
-  --from-literal=E2B_API_KEY="$E2B_API_KEY" \
-  --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
+  "${E2B_ARGS[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "OK: fastclaw-secrets 已同步"

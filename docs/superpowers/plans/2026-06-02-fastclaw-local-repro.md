@@ -372,14 +372,10 @@ kubectl config current-context
 - [ ] **Step 2.2: 准备 secret 值**
 
 获取 E2B key: 注册 https://e2b.dev → Dashboard → API Keys。
-获取 LLM key: OpenAI/Anthropic/OpenRouter 任一。
+获取 E2B key (sandbox 启用时需要, 可选): 从 [e2b.dev](https://e2b.dev/dashboard) 申请, free tier 足够 demo。
+获取 LLM key: OpenAI/Anthropic/OpenRouter 任一。**不**写入 manifest, 由用户 `fastclaw agents init` 时从自己 shell env 传入, fastclaw 存进 `agents.api_key`。
 
-编辑 `deploy/local/fastclaw-orbstack.yaml` 内 `fastclaw-secrets`:
-
-```yaml
-  E2B_API_KEY: "e2b_xxxxxxxxxxxxxxxxxxxx"      # 实际 E2B token
-  OPENAI_API_KEY: "sk-xxxxxxxxxxxxxxxx"        # 实际 LLM token
-```
+**OPENAI_API_KEY 不再放 manifest.** E2B key 仅 sandbox 启用时需要, 走 `deploy/local/secrets.sh` (从 `.env` 读取) 注入 Secret, 流程见 `deploy/local/.env.example` 注释。
 
 **注意:** 该改动不提交。如需 git 跟踪, 改用 `kubectl create secret` 命令外置, 此处简化为直接改 yaml。修改后立即:
 
@@ -684,11 +680,13 @@ POD0="${PODS[0]}"
 POD1="${PODS[1]}"
 AGENT_NAME="test-agent-consistency"
 
-# pod-0 创建 agent
-kubectl -n fastclaw exec "$POD0" -- fastclaw agents init "$AGENT_NAME" \
-  --provider openai \
-  --model openai/gpt-4o-mini \
-  --api-key-env OPENAI_API_KEY \
+# pod-0 创建 agent (OPENAI_API_KEY 来自调用方 shell env, 经 env 透传到 pod)
+: "${OPENAI_API_KEY:?需先在执行脚本的 shell 里 export OPENAI_API_KEY=sk-...}"
+kubectl -n fastclaw exec "$POD0" -- env "OPENAI_API_KEY=$OPENAI_API_KEY" \
+  fastclaw agents init "$AGENT_NAME" \
+    --provider openai \
+    --model openai/gpt-4o-mini \
+    --api-key-env OPENAI_API_KEY \
   > /tmp/agents-init.log 2>&1
 
 # pod-1 立即查询
@@ -1370,7 +1368,7 @@ fi
 
 # 5. 还原: 需手动改回真 E2B key. 这里给提示.
 echo "PASS: E2B 不可达期间, 非 sandbox 路径仍 200"
-echo "⚠️  恢复方法: 编辑 fastclaw-orbstack.yaml E2B_API_KEY 回真值, kubectl apply, rollout restart"
+echo "⚠️  恢复方法: 编辑 .env 里 E2B_API_KEY 回真值, 重跑 bash deploy/local/secrets.sh, 然后 rollout restart"
 ```
 
 - [ ] **Step 16.2: 跑**
@@ -1385,8 +1383,10 @@ bash deploy/local/drills/06-e2b-blackhole.sh
 跑完后**手动恢复** E2B_API_KEY 为真值:
 
 ```bash
-# 重新 apply 原 yaml (其中 E2B_API_KEY 还是 Task 2 Step 2.2 填的真值)
-kubectl apply -f deploy/local/fastclaw-orbstack.yaml
+# 1. 编辑 .env 把 E2B_API_KEY 改回真值
+# 2. 重跑 secrets.sh 同步 Secret
+bash deploy/local/secrets.sh
+# 3. 重启 fastclaw pod 让 env 生效
 kubectl -n fastclaw rollout restart deploy/fastclaw
 kubectl -n fastclaw rollout status deploy/fastclaw --timeout=120s
 ```
@@ -1489,8 +1489,8 @@ git commit -m "test(drill): 07 port-forward resume"
 
 1. 安装 OrbStack ≥ 1.7, 启用 Settings → Kubernetes
 2. `brew install kubectl jq hey coreutils` (gdate 来自 coreutils)
-3. 编辑 `fastclaw-orbstack.yaml` 内 `fastclaw-secrets`, 填 `E2B_API_KEY` 与 `OPENAI_API_KEY`
-4. `git update-index --assume-unchanged deploy/local/fastclaw-orbstack.yaml`
+3. `cp deploy/local/.env.example deploy/local/.env` — 默认 sandbox 关闭, 无须填值. 仅当启用 sandbox 才填 `E2B_API_KEY=...`. **OPENAI key 不进 .env, 用户在执行 `agents init` 时自备**
+4. `bash deploy/local/secrets.sh` (幂等, 同步 Secret)
 
 ## 部署
 

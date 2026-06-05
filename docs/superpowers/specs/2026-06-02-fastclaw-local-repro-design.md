@@ -95,16 +95,17 @@ FastClaw 本身是为云原生多租户场景而设计的 Agent 运行框架,同
 | `fastclaw-svc` | Service ClusterIP | - | - | port 80→18953, sessionAffinity ClientIP |
 | `fastclaw-hpa` | HPA | - | - | cpu 60%, min=2, max=4 (单机限制) |
 | `fastclaw-pdb` | PDB | - | - | minAvailable=1 |
-| `fastclaw-secrets` | Secret | - | - | STORAGE_DSN, OBJECT_STORE_AK/SK, E2B_API_KEY |
+| `fastclaw-secrets` | Secret | - | - | STORAGE_DSN, OBJECT_STORE_AK/SK, (E2B_API_KEY 仅 sandbox 启用时) |
 | `fastclaw-config` | ConfigMap | - | - | FASTCLAW_* env |
 
 ### 2.2 关键设计点
 
 1. **存算分离**: gateway pod 的 `/data/.fastclaw` 仅 emptyDir, 重启即清, 所有持久态走 PG + MinIO。验证手段: 删除 pod 后副本恢复, 数据无丢。
 2. **多 pod 一致性**: SQLite 单文件不支持多 pod, 故 `FASTCLAW_STORAGE_TYPE=postgres` 强制。跨 pod 写后读测试。
-3. **Sandbox**: `FASTCLAW_SANDBOX_BACKEND=e2b`。orbstack k8s 内 pod 无 docker daemon, 唯一可行路径。
-4. **Ingress**: 不部署。单机 `kubectl port-forward svc/fastclaw 18953:80`, 减少 nginx-ingress 依赖, 也避免 macOS host 上额外配 host name。
-5. **网络**: orbstack k8s 默认 LoadBalancer 由 orbstack 桥接到 host, 故备选可直接 `type: LoadBalancer`。PRD 主路径用 port-forward。
+3. **Sandbox**: `FASTCLAW_SANDBOX_BACKEND=e2b` (默认 `enabled=false`, 与上游 helm 对齐)。orbstack k8s 内 pod 无 docker daemon, 唯一可行路径。启用需在 `.env` 配 `E2B_API_KEY` 并重跑 `secrets.sh`, 再将 ConfigMap 的 `FASTCLAW_SANDBOX_ENABLED` 改 `"true"`。
+4. **凭据分层**: LLM provider key (OpenAI/Anthropic/...) **不**注入 pod, 由用户在 `fastclaw agents init` 时从自己 shell env 传入, fastclaw 解析后存进 `agents.api_key` 表。E2B key 是 cluster 级 sandbox 配置, 仅启用 sandbox 时存在 Secret。
+5. **Ingress**: 不部署。单机 `kubectl port-forward svc/fastclaw 18953:80`, 减少 nginx-ingress 依赖, 也避免 macOS host 上额外配 host name。
+6. **网络**: orbstack k8s 默认 LoadBalancer 由 orbstack 桥接到 host, 故备选可直接 `type: LoadBalancer`。PRD 主路径用 port-forward。
 
 ---
 
@@ -164,8 +165,8 @@ resources:
 
 ### 3.5 外部账户
 
-- E2B API key: 必需 (从 e2b.dev 申请, free tier 足够 demo)
-- 任一 LLM provider key (OpenAI/Anthropic/OpenRouter/Ollama 任选一)
+- **LLM provider key (OpenAI/Anthropic/OpenRouter/Ollama 任一)**: 用户/agent 自备, 在 `fastclaw agents init` 时从自己 shell env 传入, **不**进 cluster Secret。多人/多 agent 各持各的 key, 互不干扰。
+- **E2B API key**: 仅在启用 sandbox 时才需要 (cluster 级)。从 [e2b.dev](https://e2b.dev/dashboard) 申请, free tier 足够 demo。默认 sandbox 关闭, 部署即跑可不填。
 
 ---
 
@@ -525,8 +526,9 @@ kubectl -n fastclaw top pod -l app=fastclaw --no-headers | \
 POD0=$(kubectl -n fastclaw get pod -l app=fastclaw -o name | sed -n 1p)
 POD1=$(kubectl -n fastclaw get pod -l app=fastclaw -o name | sed -n 2p)
 
-kubectl -n fastclaw exec "$POD0" -- fastclaw agents init test-agent \
-  --provider openai --model gpt-4o-mini --api-key-env OPENAI_API_KEY
+kubectl -n fastclaw exec "$POD0" -- env "OPENAI_API_KEY=${OPENAI_API_KEY:?需先 export OPENAI_API_KEY=...}" \
+  fastclaw agents init test-agent \
+    --provider openai --model gpt-4o-mini --api-key-env OPENAI_API_KEY
 
 RESULT=$(kubectl -n fastclaw exec "$POD1" -- fastclaw agents ls | grep test-agent)
 [ -n "$RESULT" ] || { echo "FAIL: pod1 没看到 pod0 创建的 agent"; exit 1; }
