@@ -1,0 +1,149 @@
+# 租户模板: 仅 fastclaw (cm/secret/deploy/svc/hpa/pdb).
+# 共享 infra: postgres + minio 由默认 fastclaw ns 提供.
+# 占位符由 new-tenant.sh 替换:
+#   __NS__              命名空间
+#   __TENANT__          租户标识 (小写字母数字+连字符)
+#   __INFRA_NS__        共享 infra 所在 ns (默认 fastclaw)
+#   __PG_DB__           PG 数据库名 (下划线分隔)
+#   __BUCKET__          minio bucket (连字符分隔)
+#   __IMAGE_PULL_POLICY__ Never (本地) / IfNotPresent (远端)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: __TENANT__-config
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: config
+    app.kubernetes.io/name: __TENANT__-config
+    app.kubernetes.io/managed-by: kubectl
+data:
+  FASTCLAW_PORT: "18953"
+  FASTCLAW_BIND: "all"
+  FASTCLAW_STORAGE_TYPE: "postgres"
+  FASTCLAW_STORAGE_AUTO_MIGRATE: "true"
+  FASTCLAW_OBJECT_STORE_TYPE: "minio"
+  # 跨 ns 访问共享 minio: 用 FQDN (minio.<infra-ns>.svc.cluster.local)
+  FASTCLAW_OBJECT_STORE_ENDPOINT: "minio.__INFRA_NS__.svc.cluster.local:9000"
+  FASTCLAW_OBJECT_STORE_BUCKET: "__BUCKET__"
+  FASTCLAW_OBJECT_STORE_USESSL: "false"
+  FASTCLAW_SANDBOX_ENABLED: "false"
+  FASTCLAW_SANDBOX_BACKEND: "e2b"
+  FASTCLAW_LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: __TENANT__-secrets
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: secrets
+    app.kubernetes.io/name: __TENANT__-secrets
+    app.kubernetes.io/managed-by: kubectl
+type: Opaque
+stringData:
+  STORAGE_DSN: "postgres://fastclaw:fastclaw@postgres.__INFRA_NS__.svc.cluster.local:5432/__PG_DB__?sslmode=disable"
+  OBJECT_STORE_ACCESSKEY: "minioadmin"
+  OBJECT_STORE_SECRETKEY: "minioadmin"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: __TENANT__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __TENANT__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector: { matchLabels: { app: __TENANT__ } }
+  template:
+    metadata:
+      labels:
+        app: __TENANT__
+        app.kubernetes.io/part-of: fastclaw-local
+        app.kubernetes.io/component: gateway
+        app.kubernetes.io/name: __TENANT__
+    spec:
+      containers:
+        - name: fastclaw
+          image: fastclaw:local
+          imagePullPolicy: __IMAGE_PULL_POLICY__
+          ports: [{ name: http, containerPort: 18953 }]
+          envFrom: [{ configMapRef: { name: __TENANT__-config } }]
+          env:
+            - { name: FASTCLAW_HOME, value: "/data/.fastclaw" }
+            - { name: FASTCLAW_STORAGE_DSN,            valueFrom: { secretKeyRef: { name: __TENANT__-secrets, key: STORAGE_DSN } } }
+            - { name: FASTCLAW_OBJECT_STORE_ACCESSKEY, valueFrom: { secretKeyRef: { name: __TENANT__-secrets, key: OBJECT_STORE_ACCESSKEY } } }
+            - { name: FASTCLAW_OBJECT_STORE_SECRETKEY, valueFrom: { secretKeyRef: { name: __TENANT__-secrets, key: OBJECT_STORE_SECRETKEY } } }
+          volumeMounts: [{ name: data, mountPath: /data/.fastclaw }]
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /livez, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+          lifecycle:
+            preStop: { exec: { command: ["sh","-c","sleep 15"] } }
+      terminationGracePeriodSeconds: 30
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: __TENANT__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __TENANT__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  type: ClusterIP
+  selector: { app: __TENANT__ }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: __TENANT__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __TENANT__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: __TENANT__ }
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: __TENANT__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __TENANT__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: __TENANT__ } }

@@ -1,0 +1,302 @@
+# 兄弟实例模板: 全独立栈 (ns/postgres/minio/job/fastclaw).
+# 共享集群控制面, 不共享数据面. 适合 staging / 蓝绿 / 跨区域.
+#
+# 占位符由 new-instance.sh 替换:
+#   __INSTANCE__        实例标识 (小写字母数字+连字符, 非 "fastclaw" 本身)
+#   __NS__              命名空间
+#   __PG_DB__           PG 数据库 (下划线)
+#   __BUCKET__          minio bucket
+#   __IMAGE_PULL_POLICY__ Never / IfNotPresent
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/managed-by: kubectl
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: __INSTANCE__-config
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: config
+    app.kubernetes.io/name: __INSTANCE__-config
+    app.kubernetes.io/managed-by: kubectl
+data:
+  FASTCLAW_PORT: "18953"
+  FASTCLAW_BIND: "all"
+  FASTCLAW_STORAGE_TYPE: "postgres"
+  FASTCLAW_STORAGE_AUTO_MIGRATE: "true"
+  FASTCLAW_OBJECT_STORE_TYPE: "minio"
+  FASTCLAW_OBJECT_STORE_ENDPOINT: "minio:9000"
+  FASTCLAW_OBJECT_STORE_BUCKET: "__BUCKET__"
+  FASTCLAW_OBJECT_STORE_USESSL: "false"
+  FASTCLAW_SANDBOX_ENABLED: "false"
+  FASTCLAW_SANDBOX_BACKEND: "e2b"
+  FASTCLAW_LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: __INSTANCE__-secrets
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: secrets
+    app.kubernetes.io/name: __INSTANCE__-secrets
+    app.kubernetes.io/managed-by: kubectl
+type: Opaque
+stringData:
+  STORAGE_DSN: "postgres://fastclaw:fastclaw@postgres:5432/__PG_DB__?sslmode=disable"
+  OBJECT_STORE_ACCESSKEY: "minioadmin"
+  OBJECT_STORE_SECRETKEY: "minioadmin"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: database
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/part-of: fastclaw-local
+        app.kubernetes.io/component: database
+        app.kubernetes.io/name: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_DB,       value: __PG_DB__ }
+            - { name: POSTGRES_USER,     value: fastclaw }
+            - { name: POSTGRES_PASSWORD, value: fastclaw }
+            - { name: PGDATA,            value: /var/lib/postgresql/data/pgdata }
+          ports: [{ name: pg, containerPort: 5432 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+          readinessProbe:
+            exec: { command: ["pg_isready","-U","fastclaw"] }
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: database
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  clusterIP: None
+  selector: { app: postgres }
+  ports: [{ name: pg, port: 5432, targetPort: pg }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: object-store
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  serviceName: minio
+  replicas: 1
+  selector: { matchLabels: { app: minio } }
+  template:
+    metadata:
+      labels:
+        app: minio
+        app.kubernetes.io/part-of: fastclaw-local
+        app.kubernetes.io/component: object-store
+        app.kubernetes.io/name: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - { name: MINIO_ROOT_USER,     value: minioadmin }
+            - { name: MINIO_ROOT_PASSWORD, value: minioadmin }
+          ports:
+            - { name: s3,      containerPort: 9000 }
+            - { name: console, containerPort: 9001 }
+          volumeMounts: [{ name: data, mountPath: /data }]
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: s3 }
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: object-store
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  selector: { app: minio }
+  ports:
+    - { name: s3,      port: 9000, targetPort: s3 }
+    - { name: console, port: 9001, targetPort: console }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: bootstrap
+    app.kubernetes.io/name: minio-bucket-init
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: fastclaw-local
+        app.kubernetes.io/component: bootstrap
+        app.kubernetes.io/name: minio-bucket-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command: ["sh","-c","mc alias set local http://minio:9000 minioadmin minioadmin && mc mb --ignore-existing local/__BUCKET__"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: __INSTANCE__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __INSTANCE__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector: { matchLabels: { app: __INSTANCE__ } }
+  template:
+    metadata:
+      labels:
+        app: __INSTANCE__
+        app.kubernetes.io/part-of: fastclaw-local
+        app.kubernetes.io/component: gateway
+        app.kubernetes.io/name: __INSTANCE__
+    spec:
+      containers:
+        - name: fastclaw
+          image: fastclaw:local
+          imagePullPolicy: __IMAGE_PULL_POLICY__
+          ports: [{ name: http, containerPort: 18953 }]
+          envFrom: [{ configMapRef: { name: __INSTANCE__-config } }]
+          env:
+            - { name: FASTCLAW_HOME, value: "/data/.fastclaw" }
+            - { name: FASTCLAW_STORAGE_DSN,            valueFrom: { secretKeyRef: { name: __INSTANCE__-secrets, key: STORAGE_DSN } } }
+            - { name: FASTCLAW_OBJECT_STORE_ACCESSKEY, valueFrom: { secretKeyRef: { name: __INSTANCE__-secrets, key: OBJECT_STORE_ACCESSKEY } } }
+            - { name: FASTCLAW_OBJECT_STORE_SECRETKEY, valueFrom: { secretKeyRef: { name: __INSTANCE__-secrets, key: OBJECT_STORE_SECRETKEY } } }
+          volumeMounts: [{ name: data, mountPath: /data/.fastclaw }]
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /livez, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+          lifecycle:
+            preStop: { exec: { command: ["sh","-c","sleep 15"] } }
+      terminationGracePeriodSeconds: 30
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: __INSTANCE__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __INSTANCE__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  type: ClusterIP
+  selector: { app: __INSTANCE__ }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: __INSTANCE__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __INSTANCE__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: __INSTANCE__ }
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: __INSTANCE__
+  namespace: __NS__
+  labels:
+    app.kubernetes.io/part-of: fastclaw-local
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: __INSTANCE__
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: __INSTANCE__ } }
