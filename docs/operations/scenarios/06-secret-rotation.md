@@ -71,8 +71,7 @@ deploy/local/ops-scripts/backup.sh
 # 1. fastclaw pod 起得来
 kubectl -n fastclaw get pods -l app=fastclaw
 # 2. /readyz 通
-kubectl -n fastclaw port-forward svc/fastclaw 18953:80 &
-curl http://localhost:18953/readyz
+curl http://localhost:30189/readyz
 # 3. 业务流
 deploy/local/verify/04-multipod-consistency.sh   # 需 OPENAI_API_KEY
 ```

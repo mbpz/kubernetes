@@ -291,11 +291,14 @@ metadata:
     app.kubernetes.io/name: fastclaw
     app.kubernetes.io/managed-by: kubectl
 spec:
-  type: ClusterIP
+  # NodePort 让 orbstack 自动把 nodePort 映射到 Mac localhost. orbstack 单节点,
+  # NodePort 范围限制 30000-32767, 用 30189 (跟 18953 后三位对得上方便记).
+  # 浏览器访问: http://localhost:30189/  (不要再用 18953 + port-forward)
+  type: NodePort
   selector: { app: fastclaw }
   sessionAffinity: ClientIP
   sessionAffinityConfig: { clientIP: { timeoutSeconds: 3600 } }
-  ports: [{ name: http, port: 80, targetPort: http }]
+  ports: [{ name: http, port: 80, targetPort: http, nodePort: 30189 }]
 
 ---
 apiVersion: autoscaling/v2

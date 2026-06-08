@@ -54,8 +54,8 @@ deploy/local/ops-scripts/new-instance.sh staging
 # 全栈检查
 deploy/local/k8s-status.sh   # 默认 ns
 kubectl -n staging get pods
-kubectl -n staging port-forward svc/staging 18953:80 &
-curl -sS http://localhost:18953/readyz   # 200
+# NodePort 自动分配 (30300 范围), 看脚本输出:  http://localhost:<nodePort>/
+curl -sS http://localhost:30300/readyz   # 200 (假设分配到 30300)
 
 # 独立 PG 库 (与默认 fastclaw 库不共享)
 kubectl -n staging exec -i statefulset/postgres -- \
@@ -89,7 +89,7 @@ kubectl delete pvc -n staging <name> ...
 IMAGE_PULL_POLICY=IfNotPresent deploy/local/ops-scripts/new-instance.sh green
 
 # 2. 验绿栈 (smoke / verify scripts, 改 -n 参数)
-kubectl -n green port-forward svc/green 18953:80 &
+# NodePort 自动分配 (30300 范围), 看脚本输出
 deploy/local/verify/02-cold-start.sh   # 默认 ns, 手动改 -n green
 
 # 3. 切流量: 在上游 LB / Ingress 改 service 引用从 default 蓝 -> green

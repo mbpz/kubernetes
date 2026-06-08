@@ -87,7 +87,7 @@ deploy/local/ops-scripts/new-instance.sh green
 
 # 2. 绿栈验 (手动改 verify 脚本 -n 参数, 或用临时 verify wrapper)
 kubectl -n green rollout status deploy/green
-kubectl -n green port-forward svc/green 18953:80 &
+# NodePort 自动分配, 看脚本输出
 bash deploy/local/verify/all.sh  # 跑前改 NS
 
 # 3. 切流量: 上游 LB/Ingress 改 service 引用

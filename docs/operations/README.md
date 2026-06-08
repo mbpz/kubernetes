@@ -87,3 +87,16 @@ deploy/local/ops-scripts/image-upgrade.sh v1.2.3
 # 出问题回滚
 deploy/local/ops-scripts/rollback.sh fastclaw
 ```
+
+## 浏览器访问
+
+所有 fastclaw svc 用 NodePort, orbstack 自动映射到 Mac localhost:
+
+| 部署 | URL |
+|---|---|
+| 默认 fastclaw | http://localhost:30189/ |
+| 租户 (30190-30299 自动分配) | http://localhost:30190/ (acme) / 30191/ (globex) / ... |
+| 实例 (30300-30399 自动分配) | http://localhost:30300/ (staging) / 30301/ (prod) / ... |
+
+脚本 `new-tenant.sh` / `new-instance.sh` 跑完会打印分配的 nodePort.
+分配规则: 找范围内第一个未被占用的; 也可 `NODEPORT=xxxxx` 显式指定.

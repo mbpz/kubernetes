@@ -25,6 +25,20 @@ PG_DB="fastclaw_${INSTANCE//-/_}"
 BUCKET="fastclaw-${INSTANCE}"
 IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-Never}"
 
+# NodePort: 默认 30300, 找 30300-30399 第一个未被占用的; 也可 NODEPORT=xxx 显式指定.
+# 租户用 30190-30299, 实例用 30300-30399, 默认 30189 给 fastclaw.
+if [ -z "${NODEPORT:-}" ]; then
+  USED=$(kubectl get svc -A -o jsonpath='{range .items[*]}{.spec.ports[0].nodePort}{" "}{end}' 2>/dev/null)
+  for p in $(seq 30300 30399); do
+    if ! echo " $USED " | grep -q " $p "; then
+      NODEPORT=$p
+      break
+    fi
+  done
+  [ -n "${NODEPORT:-}" ] || { echo "FAIL: 30300-30399 范围 NodePort 已用完"; exit 1; }
+fi
+[[ "$NODEPORT" =~ ^30[0-9]{3}$ ]] || { echo "FAIL: NODEPORT 须 30000-32767 范围, 实际: $NODEPORT"; exit 1; }
+
 TEMPLATE="$(cd "$(dirname "$0")" && pwd)/instance-template.yaml"
 [ -f "$TEMPLATE" ] || { echo "FAIL: 模板不存在: $TEMPLATE"; exit 1; }
 
@@ -37,6 +51,7 @@ sed -e "s|__INSTANCE__|$INSTANCE|g" \
     -e "s|__PG_DB__|$PG_DB|g" \
     -e "s|__BUCKET__|$BUCKET|g" \
     -e "s|__IMAGE_PULL_POLICY__|$IMAGE_PULL_POLICY|g" \
+    -e "s|__NODEPORT__|$NODEPORT|g" \
     "$TEMPLATE" | kubectl apply -f -
 
 echo "[2/2] 等 fastclaw + 基础设施就绪"
@@ -56,7 +71,7 @@ cat <<EOF
   minio:     minio.$NS.svc.cluster.local:9000 (独立)
   bucket:    $BUCKET
   fastclaw:  $INSTANCE.$NS.svc.cluster.local:80
-  port:      kubectl -n $NS port-forward svc/$INSTANCE 18953:80
+  nodePort:  $NODEPORT -> 浏览器 http://localhost:$NODEPORT/
 
 资源消耗: 5 pod 起 (postgres+minio+2 fastclaw+1 job), HPA 触发再 +N.
 如要 staging/prod 同集群跑, 注意 postgres 单实例无 HA — 重要数据走备份

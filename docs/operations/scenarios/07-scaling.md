@@ -116,9 +116,8 @@ kubectl apply -f deploy/local/fastclaw-orbstack.yaml
 # 1. 扩
 deploy/local/ops-scripts/scale.sh fastclaw 4
 # 2. 跑压测 (需 OPENAI_API_KEY + hey)
-kubectl -n fastclaw port-forward svc/fastclaw 18953:80 &
 hey -n 1000 -c 10 -H "Authorization: Bearer $(cat .admin_token)" \
-  http://localhost:18953/api/agents
+  http://localhost:30189/api/agents
 # 3. 看 HPA
 kubectl -n fastclaw get hpa -w
 # 4. 缩回

@@ -110,9 +110,12 @@ metadata:
     app.kubernetes.io/name: __TENANT__
     app.kubernetes.io/managed-by: kubectl
 spec:
-  type: ClusterIP
+  # NodePort 让 orbstack 自动映射到 Mac localhost. nodePort 须 30000-32767 范围.
+  # 浏览器: http://localhost:30189/  (默认实例); 租户/实例用其他 nodePort
+  # 避免冲突, 见 docs/operations/scenarios/01-new-tenant.md / 02-new-instance.md
+  type: NodePort
   selector: { app: __TENANT__ }
-  ports: [{ name: http, port: 80, targetPort: http }]
+  ports: [{ name: http, port: 80, targetPort: http, nodePort: __NODEPORT__ }]
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

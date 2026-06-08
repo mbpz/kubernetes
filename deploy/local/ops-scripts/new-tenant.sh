@@ -23,6 +23,19 @@ BUCKET="fastclaw-${TENANT}"      # bucket 允许连字符
 IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-Never}"  # 本地 fastclaw:local
 INFRA_NS="${INFRA_NS:-fastclaw}"  # 共享 infra 所在的 ns
 
+# NodePort: 默认 30190, 找 30190-30299 第一个未被占用的; 也可 NODEPORT=xxx 显式指定.
+if [ -z "${NODEPORT:-}" ]; then
+  USED=$(kubectl get svc -A -o jsonpath='{range .items[*]}{.spec.ports[0].nodePort}{" "}{end}' 2>/dev/null)
+  for p in $(seq 30190 30299); do
+    if ! echo " $USED " | grep -q " $p "; then
+      NODEPORT=$p
+      break
+    fi
+  done
+  [ -n "${NODEPORT:-}" ] || { echo "FAIL: 30190-30299 范围 NodePort 已用完"; exit 1; }
+fi
+[[ "$NODEPORT" =~ ^30[0-9]{3}$ ]] || { echo "FAIL: NODEPORT 须 30000-32767 范围, 实际: $NODEPORT"; exit 1; }
+
 TEMPLATE="$(cd "$(dirname "$0")" && pwd)/tenant-fastclaw-template.yaml"
 [ -f "$TEMPLATE" ] || { echo "FAIL: 模板不存在: $TEMPLATE"; exit 1; }
 
@@ -61,6 +74,7 @@ sed -e "s|__NS__|$NS|g" \
     -e "s|__PG_DB__|$PG_DB|g" \
     -e "s|__BUCKET__|$BUCKET|g" \
     -e "s|__IMAGE_PULL_POLICY__|$IMAGE_PULL_POLICY|g" \
+    -e "s|__NODEPORT__|$NODEPORT|g" \
     "$TEMPLATE" | kubectl apply -f -
 
 # 5. 等就绪
@@ -70,11 +84,11 @@ kubectl -n "$NS" rollout status deploy/"$TENANT" --timeout=120s
 cat <<EOF
 
 ✓ 租户 '$TENANT' 上线
-  ns:      $NS
-  pg db:   $PG_DB (在共享 postgres 里)
-  bucket:  $BUCKET (在共享 minio 里)
-  svc:     $TENANT.$NS.svc.cluster.local:80
-  port:    kubectl -n $NS port-forward svc/$TENANT 18953:80
+  ns:        $NS
+  pg db:     $PG_DB (在共享 postgres 里)
+  bucket:    $BUCKET (在共享 minio 里)
+  svc:       $TENANT.$NS.svc.cluster.local:80
+  nodePort:  $NODEPORT -> 浏览器 http://localhost:$NODEPORT/
 
 下一步: 在租户里跑 fastclaw agents init (per-agent key 模型, 见 docs/operations/README.md)
 EOF

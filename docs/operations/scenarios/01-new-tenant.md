@@ -30,11 +30,11 @@ deploy/local/ops-scripts/new-tenant.sh acme
 输出示例:
 ```
 ✓ 租户 'acme' 上线
-  ns:      fastclaw-acme
-  pg db:   fastclaw_acme
-  bucket:  fastclaw-acme
-  svc:     acme.fastclaw-acme.svc.cluster.local:80
-  port:    kubectl -n fastclaw-acme port-forward svc/acme 18953:80
+  ns:        fastclaw-acme
+  pg db:     fastclaw_acme
+  bucket:    fastclaw-acme
+  svc:       acme.fastclaw-acme.svc.cluster.local:80
+  nodePort:  30190 -> 浏览器 http://localhost:30190/
 ```
 
 租户镜像从本地 `fastclaw:local` 拉, 设 `IMAGE_PULL_POLICY=IfNotPresent` 走远端 registry:
@@ -63,9 +63,8 @@ IMAGE_PULL_POLICY=IfNotPresent deploy/local/ops-scripts/new-tenant.sh acme
 # 1. pod 跑起来
 kubectl -n fastclaw-acme get pods -l app=acme
 
-# 2. 服务可达
-kubectl -n fastclaw-acme port-forward svc/acme 18953:80 &
-curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:18953/readyz   # 200
+# 2. 服务可达 (NodePort 30190 自动映射到 localhost)
+curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:30190/readyz   # 200
 
 # 3. PG 库在共享 postgres 里
 kubectl -n fastclaw exec -i statefulset/postgres -- \
