@@ -146,8 +146,11 @@ spec:
     spec:
       containers:
         - name: fastclaw
-          image: ghcr.io/fastclaw-ai/fastclaw:dev
-          imagePullPolicy: IfNotPresent
+          image: fastclaw:local
+          # 本地构建的镜像, 不走远端 registry. 镜像构建见 deploy/local/build/build.sh
+          # GHCR 上的 :dev 是私有, 上游未授权; 本地 build 绕开. 未来若拿到
+          # ghcr.io 访问权, 改回 ghcr.io/fastclaw-ai/fastclaw:dev + IfNotPresent.
+          imagePullPolicy: Never
           ports: [{ name: http, containerPort: 18953 }]
           envFrom: [{ configMapRef: { name: fastclaw-config } }]
           env:
