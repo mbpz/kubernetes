@@ -7,11 +7,10 @@ set -euo pipefail
 LIMIT_MIB=200
 FAIL=0
 
-# kubectl top 需 metrics-server. orbstack 默认带
-kubectl -n fastclaw top pod -l app=fastclaw --no-headers | while read -r NAME _ CPU MEM; do
-  # MEM 形如 "123Mi", 去后缀
+# kubectl top 输出 3 列: NAME CPU MEM. MEM 形如 "123Mi"
+kubectl -n fastclaw top pod -l app=fastclaw --no-headers | while read -r NAME CPU MEM; do
   VALUE=$(echo "$MEM" | sed 's/Mi$//')
-  if [ "${VALUE%.*}" -gt "$LIMIT_MIB" ] 2>/dev/null; then
+  if [ "${VALUE:-0%.*}" -gt "$LIMIT_MIB" ] 2>/dev/null; then
     echo "FAIL: $NAME RSS=$MEM > ${LIMIT_MIB}Mi"
     exit 1
   fi
