@@ -8,10 +8,11 @@ set -euo pipefail
 kubectl -n fastclaw scale deploy/fastclaw --replicas=0
 kubectl -n fastclaw wait --for=delete pod -l app=fastclaw --timeout=60s 2>/dev/null || true
 
-# 计时 scale up + ready
+# 计时 scale up + ready. 用 rollout status 而非 wait, 避免 scale 完后
+# 短暂无 pod 时 "no matching resources" 竞态.
 T0=$(date +%s)
 kubectl -n fastclaw scale deploy/fastclaw --replicas=2
-kubectl -n fastclaw wait --for=condition=ready pod -l app=fastclaw --timeout=60s
+kubectl -n fastclaw rollout status deploy/fastclaw --timeout=60s
 T1=$(date +%s)
 
 ELAPSED=$((T1 - T0))

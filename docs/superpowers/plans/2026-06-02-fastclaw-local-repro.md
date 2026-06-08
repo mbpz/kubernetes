@@ -440,9 +440,12 @@ kubectl -n fastclaw exec deploy/fastclaw -- \
 - [ ] **Step 2.8: 创建 admin apikey 并落地**
 
 ```bash
+# 取 2.7 输出的 user id (u_xxx 形式)
+USER_ID=$(kubectl -n fastclaw exec deploy/fastclaw -- fastclaw apikey list 2>&1 | awk '$1=="u_"{print $1; exit}')
+
 kubectl -n fastclaw exec deploy/fastclaw -- \
-  fastclaw apikey create --username alice --tier admin --name verify \
-  | awk '/^Token:/ {print $2}' > .admin_token
+  fastclaw apikey create --name verify --type admin --owner "$USER_ID" \
+  | awk '/^token: / {print $2}' > .admin_token
 chmod 600 .admin_token
 test -s .admin_token && echo "OK: token saved" || echo "FAIL: empty token"
 ```
@@ -1509,9 +1512,13 @@ kubectl -n fastclaw exec deploy/fastclaw -- \
   fastclaw admin create-user --username alice \
     --email alice@example.com --password 'hunter2' --role super_admin
 
+# 取 user id (替代 --username: --owner 要 u_xxx)
+USER_ID=$(kubectl -n fastclaw exec deploy/fastclaw -- fastclaw apikey list 2>&1 \
+  | grep -oE 'u_[a-f0-9]+' | head -1)
+
 kubectl -n fastclaw exec deploy/fastclaw -- \
-  fastclaw apikey create --username alice --tier admin --name verify \
-  | awk '/^Token:/ {print $2}' > .admin_token
+  fastclaw apikey create --name verify --type admin --owner "$USER_ID" \
+  | awk '/^token: / {print $2}' > .admin_token
 chmod 600 .admin_token
 ```
 
@@ -1601,9 +1608,12 @@ kubectl -n fastclaw exec deploy/fastclaw -- \
   fastclaw admin create-user --username alice \
     --email alice@example.com --password 'hunter2' --role super_admin
 
+USER_ID=$(kubectl -n fastclaw exec deploy/fastclaw -- fastclaw apikey list 2>&1 \
+  | grep -oE 'u_[a-f0-9]+' | head -1)
+
 kubectl -n fastclaw exec deploy/fastclaw -- \
-  fastclaw apikey create --username alice --tier admin --name verify \
-  | awk '/^Token:/ {print $2}' > .admin_token
+  fastclaw apikey create --name verify --type admin --owner "$USER_ID" \
+  | awk '/^token: / {print $2}' > .admin_token
 chmod 600 .admin_token
 ```
 

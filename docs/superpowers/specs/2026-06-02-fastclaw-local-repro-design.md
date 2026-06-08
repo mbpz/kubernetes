@@ -414,14 +414,17 @@ kubectl -n fastclaw exec deploy/fastclaw -- \
 ### 4.3 获取 API token (供验收脚本使用)
 
 ```bash
-# 创建一个 admin 级 apikey, 保存到 .admin_token
+# 先取 super_admin 的 user id (alice 的 id 在 4.2 创时打印)
+USER_ID=u_xxx   # 替换为 4.2 输出里的实际 id
+
+# 创建一个 admin 级 apikey
 kubectl -n fastclaw exec deploy/fastclaw -- \
-  fastclaw apikey create --username alice --tier admin --name verify \
-  | awk '/^Token:/ {print $2}' > .admin_token
+  fastclaw apikey create --name verify --type admin --owner "$USER_ID" \
+  | awk '/^token: / {print $2}' > .admin_token
 chmod 600 .admin_token
 ```
 
-`.admin_token` 文件被 §6 验收脚本读取。`fastclaw apikey create` 命令仅打印一次明文 token, 故必须当场保存。
+`fastclaw apikey create` 仅打印一次明文 token, 故必须当场保存。`--type` 取 `admin` / `user` / `agent`. `--owner` 是 user id, 不是 username.
 
 ---
 
