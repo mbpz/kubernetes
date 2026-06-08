@@ -49,8 +49,8 @@
 | 文件 | 职责 | 备注 |
 |---|---|---|
 | `fastclaw-orbstack.yaml` | 所有 k8s 资源 (ns/secret/cm/sts/deploy/svc/hpa/pdb/job) | 单文件部署, 顺序敏感 |
-| `verify/01-07*.sh` | 单项验收 (二进制/启动/RSS/一致性/sandbox/无状态/可用性) | 各自独立, 退出码非零=失败 |
-| `verify/all.sh` | 顺序跑所有 verify, 任一失败立即退出 | glob `0*.sh` 字典序 |
+| `verify/01-07*.sh` | 单项验收 (二进制/启动/RSS/一致性/sandbox/无状态/可用性) | 04 需 `OPENAI_API_KEY` shell env, 缺则 SKIP; 05 需 sandbox 开, 缺则 SKIP; 06 需 04 创的 agent, 缺则 SKIP; 退出码非零=失败, exit 0=PASS 或 SKIP |
+| `verify/all.sh` | 顺序跑所有 verify, 任一失败立即退出 | glob `0*.sh` 字典序, SKIP 不阻塞 |
 | `drills/01-07*.sh` | 故障注入 + 期望行为校验 | 手动执行, 不进 all.sh |
 | `README.md` | 安装顺序 + 常用命令 + 排错 | 工程师入口 |
 

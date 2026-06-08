@@ -5,10 +5,18 @@
 
 set -euo pipefail
 
-TOKEN=$(cat .admin_token 2>/dev/null || true)
-[ -n "$TOKEN" ] || { echo "FAIL: .admin_token 不存在"; exit 1; }
+# .admin_token 在 repo 根, 本脚本可能在 deploy/local/verify/ 子目录跑.
+# 沿父目录找, 找不到再 FAIL.
+TOKEN=""
+for d in . .. ../.. ../../..; do
+  if [ -f "$d/.admin_token" ]; then
+    TOKEN=$(cat "$d/.admin_token")
+    break
+  fi
+done
+[ -n "$TOKEN" ] || { echo "FAIL: .admin_token 不存在 (沿父目录找过)"; exit 1; }
 
-# 选压测工具
+# 选压测工具. 没装就 SKIP — 07 是压测专项, 非集群验收前置.
 if command -v hey >/dev/null 2>&1; then
   HEY=(hey -n 5000 -c 20)
   PARSE='Status code distribution'
@@ -16,7 +24,9 @@ elif command -v wrk >/dev/null 2>&1; then
   HEY=(wrk -t 4 -c 20 -d 10s)
   PARSE='HTTP Codes'
 else
-  echo "FAIL: 需装 hey 或 wrk (brew install hey)"; exit 1
+  echo "SKIP: 压测工具未装 (hey/wrk 都没有)"
+  echo "      启用方法: brew install hey (或 wrk) 后重跑本脚本"
+  exit 0
 fi
 
 # 后台压测

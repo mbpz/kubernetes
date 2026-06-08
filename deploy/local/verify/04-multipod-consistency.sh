@@ -3,10 +3,15 @@
 # 目标: pod-0 写 agent, pod-1 立即可读 (PG 存算分离保证)
 # 注意: OPENAI_API_KEY 从调用方 shell env 透传到 pod 内 fastclaw 进程, 由
 #       fastclaw 解析后存进 agents.api_key. 不需 cluster 级 secret.
+#       没 key 走 SKIP — 集群侧不依赖 LLM 凭证, 用户侧自己用 fastclaw 时再配.
 
 set -euo pipefail
 
-: "${OPENAI_API_KEY:?FAIL: 调用方 shell 需先 export OPENAI_API_KEY=sk-...}"
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo "SKIP: OPENAI_API_KEY 未设 (集群侧不需, 仅用户跑 fastclaw 时自配)"
+  echo "      启用方法: export OPENAI_API_KEY=sk-... 后重跑本脚本"
+  exit 0
+fi
 
 mapfile -t PODS < <(kubectl -n fastclaw get pod -l app=fastclaw -o name | sort)
 [ "${#PODS[@]}" -ge 2 ] || { echo "FAIL: pod 副本 < 2"; exit 1; }

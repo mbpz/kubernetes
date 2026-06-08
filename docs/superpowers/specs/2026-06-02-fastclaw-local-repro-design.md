@@ -524,16 +524,19 @@ kubectl -n fastclaw top pod -l app=fastclaw --no-headers | \
 
 ### 6.2 多 pod 一致性验收
 
+> **SKIP 语义**: `OPENAI_API_KEY` 不在集群 Secret 里, 也非集群验收前置. 调用方 shell 没 export 时, 脚本 SKIP (exit 0) 并提示启用方法. 06 同理 — 没 04 创建的 `verify-consistency-*` agent 时 SKIP. 04/05/06 都不阻塞 all.sh.
+
 ```bash
 # verify/04-multipod-consistency.sh
+: "${OPENAI_API_KEY:?SKIP: ...}"  # 缺则 SKIP, 不 FAIL
 POD0=$(kubectl -n fastclaw get pod -l app=fastclaw -o name | sed -n 1p)
 POD1=$(kubectl -n fastclaw get pod -l app=fastclaw -o name | sed -n 2p)
 
-kubectl -n fastclaw exec "$POD0" -- env "OPENAI_API_KEY=${OPENAI_API_KEY:?需先 export OPENAI_API_KEY=...}" \
-  fastclaw agents init test-agent \
+kubectl -n fastclaw exec "$POD0" -- env "OPENAI_API_KEY=$OPENAI_API_KEY" \
+  fastclaw agents init verify-consistency-$$ \
     --provider openai --model gpt-4o-mini --api-key-env OPENAI_API_KEY
 
-RESULT=$(kubectl -n fastclaw exec "$POD1" -- fastclaw agents ls | grep test-agent)
+RESULT=$(kubectl -n fastclaw exec "$POD1" -- fastclaw agents ls | grep "verify-consistency-$$")
 [ -n "$RESULT" ] || { echo "FAIL: pod1 没看到 pod0 创建的 agent"; exit 1; }
 echo "OK: cross-pod read 一致"
 ```
