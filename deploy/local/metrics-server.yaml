@@ -3,6 +3,9 @@ kind: ServiceAccount
 metadata:
   labels:
     k8s-app: metrics-server
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/name: metrics-server
+    app.kubernetes.io/managed-by: kubectl
   name: metrics-server
   namespace: kube-system
 ---
@@ -54,6 +57,9 @@ kind: RoleBinding
 metadata:
   labels:
     k8s-app: metrics-server
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/name: metrics-server
+    app.kubernetes.io/managed-by: kubectl
   name: metrics-server-auth-reader
   namespace: kube-system
 roleRef:
@@ -70,6 +76,9 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     k8s-app: metrics-server
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/name: metrics-server
+    app.kubernetes.io/managed-by: kubectl
   name: metrics-server:system:auth-delegator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -100,6 +109,9 @@ kind: Service
 metadata:
   labels:
     k8s-app: metrics-server
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/name: metrics-server
+    app.kubernetes.io/managed-by: kubectl
   name: metrics-server
   namespace: kube-system
 spec:
@@ -116,6 +128,9 @@ kind: Deployment
 metadata:
   labels:
     k8s-app: metrics-server
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/name: metrics-server
+    app.kubernetes.io/managed-by: kubectl
   name: metrics-server
   namespace: kube-system
 spec:
@@ -129,6 +144,9 @@ spec:
     metadata:
       labels:
         k8s-app: metrics-server
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/name: metrics-server
+        app.kubernetes.io/managed-by: kubectl
     spec:
       containers:
       - args:
